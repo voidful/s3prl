@@ -29,6 +29,7 @@ from s3prl.upstream.mae_ast.hubconf import *
 from s3prl.upstream.ast.hubconf import *
 from s3prl.upstream.ssast.hubconf import *
 from s3prl.upstream.byol_s.hubconf import *
+from s3prl.upstream.whisper.hubconf import *
 
 from s3prl.downstream.timit_phone.hubconf import timit_posteriorgram
 

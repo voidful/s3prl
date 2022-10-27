@@ -52,6 +52,7 @@ class UpstreamExpert(UpstreamBase):
         device = wavs[0].device
 
         batch = []
+        import whisper
         for w in wavs:
             audio = whisper.pad_or_trim(w)
             mel = whisper.log_mel_spectrogram(audio).to(device)
@@ -60,4 +61,4 @@ class UpstreamExpert(UpstreamBase):
         batch = torch.nn.utils.rnn.pad_sequence(batch, batch_first=True, padding_value=-100)
         ## compute mask
         mask = (batch != -100).to(device)
-        return batch, mask
+        features, feat_padding_mask = batch, mask
