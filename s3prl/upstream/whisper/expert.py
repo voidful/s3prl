@@ -50,13 +50,17 @@ class UpstreamExpert(UpstreamBase):
     def forward(self, wavs):
 
         device = wavs[0].device
-
         batch = []
+
         import whisper
-        for w in wavs:
-            audio = whisper.pad_or_trim(w)
-            mel = whisper.log_mel_spectrogram(audio).to(device)
-            batch.append(self.model.encoder(mel.unsqueeze(0)).squeeze(0))
+        with torch.no_grad():
+            for w in wavs:
+                mel = whisper.log_mel_spectrogram(w).to(device)
+                encoder_features = []
+                for m_30s in torch.split(mel, 3000, -1):
+                    audio = whisper.pad_or_trim(m_30s, 3000)
+                    encoder_features.append(self.model.encoder(audio.unsqueeze(0)))
+                batch.append(torch.cat(encoder_features, 1))
 
         batch = torch.nn.utils.rnn.pad_sequence(batch, batch_first=True, padding_value=-100)
         ## compute mask
