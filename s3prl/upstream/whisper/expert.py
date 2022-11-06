@@ -12,6 +12,7 @@ from collections import defaultdict
 ###############
 
 import torch
+import torch.nn.functional as F
 
 from ..interfaces import UpstreamBase
 
@@ -76,19 +77,36 @@ class UpstreamExpert(UpstreamBase):
                     wav_features.append(audio)
                     wav_features_map.append(w_id)
 
-            code_result = defaultdict(list)
+            code_result = defaultdict(lambda: defaultdict(list))
             for bd, bm in zip(self.chunks(wav_features, len(wavs)), self.chunks(wav_features_map, len(wavs))):
                 batch, lengths, masks = self.collate_fn_pad(bd, self.device)
                 masks_ratio = lengths / torch.max(lengths)
-                hidden = self.model.encoder(batch)
+
+                x = F.gelu(self.model.encoder.conv1(batch))
+                x = F.gelu(self.model.encoder.conv2(x))
+                x = x.permute(0, 2, 1)
+
+                assert x.shape[1:] == self.model.encoder.positional_embedding.shape, "incorrect audio shape"
+                x = (x + self.model.encoder.positional_embedding).to(x.dtype)
+
+                for block_id, block in enumerate(self.model.encoder.blocks):
+                    mask_len = (x.shape[1] * masks_ratio).int()
+                    for a, h, ml in zip(bm, x, mask_len):
+                        code_result[a][block_id].append(h[:ml, :])
+                    x = block(x)
+
+                hidden = self.model.encoder.ln_post(x)
                 mask_len = (hidden.shape[1] * masks_ratio).int()
                 for a, h, ml in zip(bm, hidden, mask_len):
-                    code_result[a].append(h[:ml, :])
-            for k, v in code_result.items():
-                code_result[k] = torch.cat(v, 0)
+                    code_result[a][block_id + 1].append(h[:ml, :])
 
+            for k, v in code_result.items():
+                layer_stack = []
+                for k2, v2 in v.items():
+                    layer_stack.append(torch.cat(v2, dim=0))
+                code_result[k] = layer_stack
             states = {
-                "hidden_states": [torch.stack(list(code_result.values()), 0)]
+                "hidden_states": [torch.stack(i, 0) for i in list(code_result.values())]
             }
 
             return states
